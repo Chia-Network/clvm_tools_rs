@@ -239,7 +239,10 @@ impl TConversion for OpcConversion {
         read_ir(hex_text)
             .map_err(|e| e.to_string())
             .and_then(|ir_sexp| {
-                assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.to_string())
+                assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| match e {
+                    EvalErr::InternalError(_, e) => e.to_string(),
+                    _ => e.to_string(),
+                })
             })
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
             .map(Ok) // Flatten result type to Ok
@@ -272,7 +275,10 @@ impl TConversion for OpdConversion {
         ));
 
         sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
-            .map_err(|e| e.to_string())
+            .map_err(|e| match e {
+                EvalErr::InternalError(_, e) => e.to_string(),
+                _ => e.to_string(),
+            })
             .map(|sexp| {
                 let disassembled = disassemble(allocator, sexp.1, self.op_version);
                 t(sexp.1, disassembled)

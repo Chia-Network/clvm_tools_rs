@@ -3,6 +3,7 @@ use std::fs;
 use std::rc::Rc;
 
 use clvm_rs::allocator::Allocator;
+use clvm_rs::error::EvalErr;
 
 use crate::classic::clvm::sexp::sexp_as_bin;
 use crate::classic::clvm_tools::stages::stage_0::{
@@ -51,7 +52,18 @@ fn run_with_cost(
             }),
         )
         .map_err(|e| {
-            RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.to_string(), sexp, env))
+            RunFailure::RunErr(
+                sexp.loc(),
+                format!(
+                    "{} in {} {}",
+                    match e {
+                        EvalErr::InternalError(_, e) => e.to_string(),
+                        _ => e.to_string(),
+                    },
+                    sexp,
+                    env
+                ),
+            )
         })
         .and_then(|reduction| {
             Ok(CompileRunResult {
