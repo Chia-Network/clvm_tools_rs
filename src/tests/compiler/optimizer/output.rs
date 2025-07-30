@@ -50,7 +50,9 @@ fn run_with_cost(
                 ..RunProgramOption::default()
             }),
         )
-        .map_err(|e| RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.1, sexp, env)))
+        .map_err(|e| {
+            RunFailure::RunErr(sexp.loc(), format!("{} in {} {}", e.to_string(), sexp, env))
+        })
         .and_then(|reduction| {
             Ok(CompileRunResult {
                 compiled: sexp.clone(),

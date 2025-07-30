@@ -412,7 +412,7 @@ fn apply_op(
         .map_err(|e| {
             RunFailure::RunErr(
                 head.loc(),
-                format!("{} in {application} {wrapped_args}", e.1),
+                format!("{} in {application} {wrapped_args}", e.to_string()),
             )
         })
         .and_then(|v| convert_from_clvm_rs(allocator, head.loc(), v.1))

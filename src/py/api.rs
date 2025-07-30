@@ -126,10 +126,10 @@ fn run_clvm_compilation(
 
             // Get the text representation, which will go either to the output file
             // or result.
-            let mut hex_text = Bytes::new(Some(BytesFromType::Raw(node_to_bytes(
-                &allocator,
-                clvm_result,
-            )?)))
+            let mut hex_text = Bytes::new(Some(BytesFromType::Raw(
+                node_to_bytes(&allocator, clvm_result)
+                    .map_err(|err| PyException::new_err(err.to_string()))?,
+            )))
             .hex();
             let compiled = if let Some(output_file) = output {
                 // Write output with eol.

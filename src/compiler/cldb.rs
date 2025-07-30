@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use clvm_rs::allocator;
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::EvalErr;
+use clvm_rs::error::EvalErr;
 use num_bigint::ToBigInt;
 
 use crate::classic::clvm::__type_compatibility__::{
@@ -609,7 +609,7 @@ fn hex_to_modern_sexp_inner(
             hex_to_modern_sexp_inner(allocator, symbol_table, srcloc, b)?,
         ))),
         _ => convert_from_clvm_rs(allocator, srcloc, program)
-            .map_err(|_| EvalErr(NodePtr::NIL, "clvm_rs allocator failed".to_string())),
+            .map_err(|_| EvalErr::InternalError(NodePtr::NIL, "clvm_rs allocator failed".to_string())),
     }
 }
 

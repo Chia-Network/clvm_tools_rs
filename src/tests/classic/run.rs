@@ -2589,8 +2589,8 @@ fn test_big_operator_list() {
     assert_eq!(result, target_output);
 }
 
-const KECCAK_TEST_SIG: &'static str = "\"baz(uint32,bool)\"";
-const KECCAK_TEST_RESULT: &'static str =
+const KECCAK_TEST_SIG: &str = "\"baz(uint32,bool)\"";
+const KECCAK_TEST_RESULT: &str =
     "0xcdcd77c0992ec5bbfc459984220f8c45084cc24d9b6efed1fae540db8de801d2";
 
 #[test]

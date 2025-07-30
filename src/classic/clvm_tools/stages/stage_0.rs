@@ -3,13 +3,13 @@ use clvm_rs::chia_dialect::{ChiaDialect, ENABLE_KECCAK_OPS_OUTSIDE_GUARD, NO_UNK
 use clvm_rs::core_ops::{op_cons, op_eq, op_first, op_if, op_listp, op_raise, op_rest};
 use clvm_rs::cost::Cost;
 use clvm_rs::dialect::{Dialect, OperatorSet};
-use clvm_rs::err_utils::err;
+use clvm_rs::error::EvalErr;
 use clvm_rs::more_ops::{
     op_add, op_all, op_any, op_ash, op_concat, op_div, op_divmod, op_gr, op_gr_bytes, op_logand,
     op_logior, op_lognot, op_logxor, op_lsh, op_multiply, op_not, op_point_add, op_pubkey_for_exp,
     op_sha256, op_strlen, op_substr, op_subtract, op_unknown,
 };
-use clvm_rs::reduction::{EvalErr, Reduction, Response};
+use clvm_rs::reduction::{Reduction, Response};
 
 use clvm_rs::run_program::{run_program_with_pre_eval, PreEval};
 
@@ -66,7 +66,10 @@ fn unknown_operator(
     max_cost: Cost,
 ) -> Response {
     if (flags & NO_UNKNOWN_OPS) != 0 {
-        err(o, "unimplemented operator")
+        Err(EvalErr::InternalError(
+            o,
+            "unimplemented operator".to_string(),
+        ))
     } else {
         op_unknown(allocator, o, args, max_cost)
     }
