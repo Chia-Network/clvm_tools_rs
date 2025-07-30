@@ -1462,7 +1462,10 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let output = collapse(res.map_err(|ex| {
         format!(
             "FAIL: {} {}",
-            ex.to_string(),
+            match &ex {
+                EvalErr::InternalError(_, e) => e.to_string(),
+                _ => ex.to_string(),
+            },
             disassemble_with_kw(&allocator, ex.node_ptr(), keywords)
         )
     }));

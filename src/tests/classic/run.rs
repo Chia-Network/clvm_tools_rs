@@ -2141,7 +2141,7 @@ fn test_secp256k1_verify_modern_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2169,7 +2169,7 @@ fn test_secp256k1_verify_classic_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2198,7 +2198,7 @@ fn test_secp256k1_verify_modern_int_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2226,7 +2226,7 @@ fn test_secp256r1_verify_modern_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256r1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2254,7 +2254,7 @@ fn test_secp256r1_verify_classic_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256r1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]

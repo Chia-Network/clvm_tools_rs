@@ -33,7 +33,13 @@ pub enum CompileError {
 
 impl From<EvalErr> for CompileError {
     fn from(e: EvalErr) -> Self {
-        CompileError::Classic(e.node_ptr(), e.to_string())
+        CompileError::Classic(
+            e.node_ptr(),
+            match e {
+                EvalErr::InternalError(_, e) => e.to_string(),
+                _ => e.to_string(),
+            },
+        )
     }
 }
 
