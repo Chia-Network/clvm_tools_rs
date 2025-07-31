@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "clvm_tools_rs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "binascii",
  "chia-bls",
@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "clvm_tools_wasm"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clvm_tools_rs",
  "clvmr",
@@ -198,9 +198,9 @@ dependencies = [
 
 [[package]]
 name = "clvmr"
-version = "0.14.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd6b7142674607f3a213addaf261bd70b07537297e460a9cc6a389068a62934f"
+checksum = "5267d46b9946d172db86048e88aab94be58de181c3e81bdc6e97d622b03a67ba"
 dependencies = [
  "bitvec",
  "bumpalo",
@@ -217,6 +217,7 @@ dependencies = [
  "rand",
  "sha1",
  "sha3",
+ "thiserror",
 ]
 
 [[package]]

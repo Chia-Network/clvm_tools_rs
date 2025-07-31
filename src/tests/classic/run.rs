@@ -2141,7 +2141,7 @@ fn test_secp256k1_verify_modern_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2169,7 +2169,7 @@ fn test_secp256k1_verify_classic_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2198,7 +2198,7 @@ fn test_secp256k1_verify_modern_int_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256k1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2226,7 +2226,7 @@ fn test_secp256r1_verify_modern_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256r1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2254,7 +2254,7 @@ fn test_secp256r1_verify_classic_fail() {
     ])
     .trim()
     .to_string();
-    assert!(output.starts_with("FAIL: secp256r1_verify failed"));
+    assert!(output.starts_with("FAIL: Secp256 Verify Error: failed"));
 }
 
 #[test]
@@ -2589,8 +2589,8 @@ fn test_big_operator_list() {
     assert_eq!(result, target_output);
 }
 
-const KECCAK_TEST_SIG: &'static str = "\"baz(uint32,bool)\"";
-const KECCAK_TEST_RESULT: &'static str =
+const KECCAK_TEST_SIG: &str = "\"baz(uint32,bool)\"";
+const KECCAK_TEST_RESULT: &str =
     "0xcdcd77c0992ec5bbfc459984220f8c45084cc24d9b6efed1fae540db8de801d2";
 
 #[test]

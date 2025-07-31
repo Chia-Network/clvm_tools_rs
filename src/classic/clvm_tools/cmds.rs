@@ -18,7 +18,7 @@ use hashlink::LinkedHashMap;
 use yaml_rust2::{Yaml, YamlEmitter};
 
 use clvm_rs::allocator::{Allocator, NodePtr};
-use clvm_rs::reduction::EvalErr;
+use clvm_rs::error::EvalErr;
 use clvm_rs::run_program::PreEval;
 
 use crate::classic::clvm::__type_compatibility__::{
@@ -238,7 +238,12 @@ impl TConversion for OpcConversion {
     ) -> Result<Tuple<NodePtr, String>, String> {
         read_ir(hex_text)
             .map_err(|e| e.to_string())
-            .and_then(|ir_sexp| assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| e.1))
+            .and_then(|ir_sexp| {
+                assemble_from_ir(allocator, Rc::new(ir_sexp)).map_err(|e| match e {
+                    EvalErr::InternalError(_, e) => e.to_string(),
+                    _ => e.to_string(),
+                })
+            })
             .map(|sexp| t(sexp, sexp_as_bin(allocator, sexp).hex()))
             .map(Ok) // Flatten result type to Ok
             .unwrap_or_else(|err| Ok(t(NodePtr::NIL, err))) // Original code printed error messages on stdout, ret 0 on CLVM error
@@ -270,7 +275,10 @@ impl TConversion for OpdConversion {
         ));
 
         sexp_from_stream(allocator, &mut stream, Box::new(SimpleCreateCLVMObject {}))
-            .map_err(|e| e.1)
+            .map_err(|e| match e {
+                EvalErr::InternalError(_, e) => e.to_string(),
+                _ => e.to_string(),
+            })
             .map(|sexp| {
                 let disassembled = disassemble(allocator, sexp.1, self.op_version);
                 t(sexp.1, disassembled)
@@ -1460,8 +1468,11 @@ pub fn launch_tool(stdout: &mut Stream, args: &[String], tool_name: &str, defaul
     let output = collapse(res.map_err(|ex| {
         format!(
             "FAIL: {} {}",
-            ex.1,
-            disassemble_with_kw(&allocator, ex.0, keywords)
+            match &ex {
+                EvalErr::InternalError(_, e) => e.to_string(),
+                _ => ex.to_string(),
+            },
+            disassemble_with_kw(&allocator, ex.node_ptr(), keywords)
         )
     }));
 
