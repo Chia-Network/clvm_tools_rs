@@ -29,7 +29,7 @@ sha2 = "0.10.9"
 tempfile = "3.19.1"
 clvmr = { version = "0.16.1", features = ["pre-eval"] }
 binascii = "0.1.4"
-yaml-rust2 = "0.10.1"
+yaml-rust2 = "0.10.3"
 hashlink = "0.10.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 regex = "1.11.1"
