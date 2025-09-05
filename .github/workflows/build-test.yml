@@ -320,37 +320,39 @@ jobs:
           aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
 
-  fmt:
+  clippy:
     runs-on: ubuntu-22.04
-    name: cargo fmt
+    name: clippy
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
       - name: Install rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-            toolchain: stable
-            override: true
-            components: rustfmt, clippy
-      - name: fmt
-        run: cargo fmt -- --files-with-diff --check
+          components: rustfmt, clippy
+          toolchain: stable-2025-08-07-x86_64-unknown-linux-gnu
+      - name: clippy 
+        run: |
+          # Add --all-targets as a separate step
+          cargo clippy --workspace -- -D warnings
+      - name: cargo fmt
+        run: cargo fmt --all -- --files-with-diff --check
 
-  clippy:
+  cargo_fmt:
     runs-on: ubuntu-22.04
+    name: cargo fmt 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-          components: clippy
-          override: true
-      - name: clippy
-        run: cargo clippy --all -- -D warnings && cargo clippy --manifest-path wasm/Cargo.toml --all -- -D warnings
-      - uses: giraffate/clippy-action@v1
+          fetch-depth: 1
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          reporter: 'github-pr-review'
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          components: rustfmt, clippy
+          toolchain: stable-2025-08-07-x86_64-unknown-linux-gnu
+      - name: cargo fmt
+        run: cargo fmt --all -- --files-with-diff --check
 
   unit_tests:
     runs-on: ubuntu-22.04
