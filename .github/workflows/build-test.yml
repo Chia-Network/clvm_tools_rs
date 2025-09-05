@@ -320,9 +320,9 @@ jobs:
           aws --no-progress s3 cp "$file" "s3://download.chia.net/simple-dev/clvm-tools-rs/$filename"
         done <<< "$FILES"
 
-  checks:
+  clippy:
     runs-on: ubuntu-22.04
-    name: Checks
+    name: clippy
     steps:
       - uses: actions/checkout@v4
         with:
@@ -336,6 +336,21 @@ jobs:
         run: |
           # Add --all-targets as a separate step
           cargo clippy --workspace -- -D warnings
+      - name: cargo fmt
+        run: cargo fmt --all -- --files-with-diff --check
+
+  cargo_fmt:
+    runs-on: ubuntu-22.04
+    name: cargo fmt 
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          toolchain: stable-2025-08-07-x86_64-unknown-linux-gnu
       - name: cargo fmt
         run: cargo fmt --all -- --files-with-diff --check
 
