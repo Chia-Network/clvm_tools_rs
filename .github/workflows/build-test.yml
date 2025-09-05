@@ -333,7 +333,9 @@ jobs:
           components: rustfmt, clippy
           toolchain: stable-2025-08-07-x86_64-unknown-linux-gnu
       - name: Clippy
-        run: cargo clippy --all-targets --workspace -- -D warnings
+        run:
+          # Add --all-targets as a separate step
+          cargo clippy --workspace -- -D warnings
       - name: fmt
         run: cargo fmt --all -- --files-with-diff --check
 
