@@ -26,7 +26,8 @@
   "keywords": [
     "library",
     "starter",
-    "es6"
+    "es6",
+    "test"
   ],
   "devDependencies": {
     "@babel/cli": "^7.22.9",
