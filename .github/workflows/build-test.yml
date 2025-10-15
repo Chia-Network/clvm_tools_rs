@@ -164,12 +164,12 @@ jobs:
         python -m pip install maturin==1.7.0 && \
         cd .. && \
         pip install --no-index --find-links target/wheels/ chialisp && \
-        pip install -e ./tmp && \
         cd chia_puzzles && \
         pip install click typing_extensions chia_rs clvm chia_puzzles_py) && \
+        pip install -e ../tmp && \
         pip uninstall -y chialisp && \
         pip install --no-index --find-links target/wheels/ chialisp && \
-        pip install -e ./tmp && \
+        pip install -e ../tmp && \
         (cd chia_puzzles && export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
         ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
         echo "Running check" && \
