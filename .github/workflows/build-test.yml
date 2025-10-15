@@ -105,6 +105,7 @@ jobs:
         python -m pip install ./clvm_tools
 
         # Install chialisp pkg as "clvm_tools_rs" for older test framework
+        pip uninstall -v -y clvm_tools_rs
         pip install -e ./tmp
 
 
@@ -166,9 +167,11 @@ jobs:
         pip install --no-index --find-links target/wheels/ chialisp && \
         cd chia_puzzles && \
         pip install click typing_extensions chia_rs clvm chia_puzzles_py) && \
-        pip install -e ../tmp && \
-        pip uninstall -y chialisp && \
-        pip install --no-index --find-links target/wheels/ chialisp && \
+        pip uninstall -v -y clvm_tools_rs && \
+        pip install -v -e ../tmp && \
+        pip uninstall -v -y chialisp && \
+        pip install -v --no-index --find-links target/wheels/ chialisp && \
+        pip uninstall -v -y clvm_tools_rs && \
         pip install -e ../tmp && \
         (cd chia_puzzles && export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
         ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
@@ -397,6 +400,7 @@ jobs:
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           # Install chialisp pkg as "clvm_tools_rs" for older test framework
           pip install ./clvm_tools
+          pip uninstall -v -y clvm_tools_rs
           pip install -e ./tmp
           pip install maturin pytest
           maturin develop --release
