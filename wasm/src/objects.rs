@@ -8,17 +8,17 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use clvm_tools_rs::classic::clvm::__type_compatibility__::{
+use chialisp::classic::clvm::__type_compatibility__::{
     bi_one, Bytes, Stream, UnvalidatedBytesFromType,
 };
-use clvm_tools_rs::classic::clvm::serialize::{
+use chialisp::classic::clvm::serialize::{
     sexp_from_stream, sexp_to_stream, SimpleCreateCLVMObject,
 };
-use clvm_tools_rs::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
-use clvm_tools_rs::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
-use clvm_tools_rs::compiler::prims::{primapply, primcons, primquote};
-use clvm_tools_rs::compiler::sexp::SExp;
-use clvm_tools_rs::compiler::srcloc::Srcloc;
+use chialisp::classic::clvm_tools::stages::stage_0::{DefaultProgramRunner, TRunProgram};
+use chialisp::compiler::clvm::{convert_from_clvm_rs, convert_to_clvm_rs, sha256tree};
+use chialisp::compiler::prims::{primapply, primcons, primquote};
+use chialisp::compiler::sexp::SExp;
+use chialisp::compiler::srcloc::Srcloc;
 use clvmr::error::EvalErr;
 use clvmr::Allocator;
 
