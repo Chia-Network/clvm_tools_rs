@@ -396,8 +396,8 @@ jobs:
           source venv/bin/activate
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           # Install chialisp pkg as "clvm_tools_rs" for older test framework
-          pip install -e ./tmp
           pip install ./clvm_tools
+          pip install -e ./tmp
           pip install maturin pytest
           maturin develop --release
           (cd resources/tests/cmdline/tests && pytest)
