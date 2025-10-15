@@ -24,7 +24,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Set up rusts
+    - name: Set up rust tools
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
@@ -108,6 +108,9 @@ jobs:
 
         echo "installing clvm_rs via pip"
         pip install clvm_rs
+
+        # Install chialisp pkg as "clvm_tools_rs" for older test framework
+        pip install -e ./tmp
 
         echo "installing clvm_tools for clvm tests"
         # clvm tools is required to run the tests is clvm
