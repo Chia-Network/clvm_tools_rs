@@ -160,14 +160,15 @@ jobs:
         # chia_puzzles_py/manage_clvm.py while being in ./chia_puzzles.
         cp support/install_deps.sh support/verify_compiler_version.sh chia_puzzles
         (cd chia_puzzles && python -m venv .venv && . .venv/bin/activate && pip install --upgrade pip && \
-          python -m pip install maturin==1.7.0 && \
-          cd .. && pip install --no-index --find-links target/wheels/ chialisp && \
-          cd chia_puzzles && \
-          pip install click typing_extensions chia_rs clvm chia_puzzles_py) && \
+        python -m pip install maturin==1.7.0 && \
+        cd .. && \
+        pip install --no-index --find-links target/wheels/ chialisp && \
+        pip install -e ./tmp && \
+        cd chia_puzzles && \
+        pip install click typing_extensions chia_rs clvm chia_puzzles_py) && \
         pip uninstall -y chialisp && \
         pip install --no-index --find-links target/wheels/ chialisp && \
         (cd chia_puzzles && export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
-        pip install -e ./tmp && \
         ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
         echo "Running check" && \
         python chia_puzzles_py/manage_clvm.py check && \
