@@ -82,6 +82,8 @@ jobs:
         python -m pip install ./clvm
         python -m pip install clvm_rs
 
+        pip install -e ./tmp
+        # Install chialisp pkg as "clvm_tools_rs" for older test framework
         git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
         python -m pip install ./clvm_tools
 
