@@ -6,8 +6,8 @@ if [[ $# -ne 1 ]]; then
     exit 2
 fi
 
-pip_installed_version=$(pip list | grep chialisp | awk '{print $2}')
-python_import_version=$(python -c 'import chialisp; print(clvm_tools_rs.get_version())')
+pip_installed_version=$(pip list | grep '^chialisp\s' | awk '{print $2}')
+python_import_version=$(python -c 'import chialisp; print(chialisp.get_version())')
 
 expected_version="$1"
 

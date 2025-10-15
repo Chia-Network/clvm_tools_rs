@@ -167,6 +167,7 @@ jobs:
         pip uninstall -y chialisp && \
         pip install --no-index --find-links target/wheels/ chialisp && \
         (cd chia_puzzles && export PYTHONPATH=${PYTHONPATH}:$(pwd) && \
+        pip install -e ./tmp && \
         ./verify_compiler_version.sh ${CLVM_TOOLS_RS_VERSION} && . .venv/bin/activate && \
         echo "Running check" && \
         python chia_puzzles_py/manage_clvm.py check && \
