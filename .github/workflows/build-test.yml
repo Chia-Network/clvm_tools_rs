@@ -405,28 +405,36 @@ jobs:
           python -m pip install --upgrade pip
       - name: clone clvm_tools so we have an exact match of the tests run in both repos
         run: |
+          python -m venv venv
+          source venv/bin/activate
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           pip install ./clvm_tools
       - name: install maturin & pytest
         run: |
+          python -m venv venv
           python -m pip install maturin==1.7.0
           pip install pytest
       - name: Build maturin interface
         run: |
+          python -m venv venv
           maturin develop --release
       - name: Install chialisp
         run: |
+          python -m venv venv
           pip uninstall -v -y chialisp
           pip install -v --no-index --find-links target/wheels/ chialisp
       - name: Install chialisp pkg as "clvm_tools_rs" for older test framework
         run: |
+          python -m venv venv
           pip uninstall -v -y clvm_tools_rs
           pip install -e ./tmp
       - name: Run pytest in resources/tests/cmdline/tests for coverage
         run: |
+          python -m venv venv
           (cd resources/tests/cmdline/tests && pytest)
       - name: Run grcov for coverage
         run: |
+          python -m venv venv
           grcov . --binary-path target -s . --branch --ignore-not-existing --ignore='*/.cargo/*' --ignore='*/tests/*' -o rust_cov.info
       - name: Process lcov.info
         run: |
