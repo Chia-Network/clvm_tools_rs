@@ -93,7 +93,6 @@ jobs:
 
     - name: install clvm & clvm_tools
       run: |
-        set -x
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
         python -m pip install ./clvm
 
@@ -113,7 +112,6 @@ jobs:
 
     - name: Ensure clvm, clvm_rs, chialisp are installed
       run: |
-        set -x
         python -c 'import clvm; print("clvm:", clvm.__file__)'
         python -c 'import clvm_rs; print("clvm_rs", clvm_rs.__file__)'
         python -c 'import chialisp; print("chialisp:", chialisp.__file__)'
@@ -124,7 +122,6 @@ jobs:
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
       run: |
-        set -x
         cargo build
         # This finds and installs a compatible wheel from the target directory on linux.
         # We do it here as a hedge against changes in the python environment that might
@@ -152,7 +149,6 @@ jobs:
     - name: Verify recompilation of old sources match with new compiler
       if: startsWith(matrix.os, 'ubuntu') && startsWith(matrix.python, '3.12')
       run: |
-        set -x
         # Build cmd line tools
         PYO3_PYTHON=`which python` cargo build --release
 
@@ -392,7 +388,6 @@ jobs:
             toolchain: stable
       - name: Run for coverage
         run: |
-          set -x
           sudo apt-get update
           sudo apt-get install lcov -y
           rustup component add llvm-tools-preview
