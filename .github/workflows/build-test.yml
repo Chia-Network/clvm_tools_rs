@@ -93,6 +93,7 @@ jobs:
 
     - name: install clvm & clvm_tools
       run: |
+        set -x
         git clone https://github.com/Chia-Network/clvm.git --branch=main --single-branch
         python -m pip install ./clvm
 
@@ -106,20 +107,24 @@ jobs:
 
         # Install chialisp pkg as "clvm_tools_rs" for older test framework
         pip uninstall -v -y clvm_tools_rs
+        pip install chialisp
         pip install -e ./tmp
 
 
     - name: Ensure clvm, clvm_rs, chialisp are installed
       run: |
+        set -x
         python -c 'import clvm; print("clvm:", clvm.__file__)'
         python -c 'import clvm_rs; print("clvm_rs", clvm_rs.__file__)'
         python -c 'import chialisp; print("chialisp:", chialisp.__file__)'
         python -c 'import clvm_tools_rs; print("clvm_tools_rs:", clvm_tools_rs.__file__)'
-        echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import chialisp; print(chialisp.get_version())')" >> "$GITHUB_ENV"
+        echo "CLVM_TOOLS_RS_VERSION=$(python -c 'import clvm_tools_rs; print(clvm_tools_rs.get_version())')" >> "$GITHUB_ENV"
+        echo "CHIALISP_VERSION=$(python -c 'import chialisp; print(chialisp.get_version())')" >> "$GITHUB_ENV"
 
     # Test cldb output both run from python and via its command line tool.
     - name: "Run step run tests"
       run: |
+        set -x
         cargo build
         # This finds and installs a compatible wheel from the target directory on linux.
         # We do it here as a hedge against changes in the python environment that might
@@ -169,7 +174,6 @@ jobs:
         pip install click typing_extensions chia_rs clvm chia_puzzles_py) && \
         pip uninstall -v -y clvm_tools_rs && \
         echo "PWD:" $(pwd) && \
-        pip install -v -e ../../tmp && \
         pip uninstall -v -y chialisp && \
         pip install -v --no-index --find-links target/wheels/ chialisp && \
         pip uninstall -v -y clvm_tools_rs && \
@@ -388,6 +392,7 @@ jobs:
             toolchain: stable
       - name: Run for coverage
         run: |
+          set -x
           sudo apt-get update
           sudo apt-get install lcov -y
           rustup component add llvm-tools-preview
@@ -399,10 +404,15 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
-          # Install chialisp pkg as "clvm_tools_rs" for older test framework
           pip install ./clvm_tools
+          # ----- 
+          echo "PWD:" $(pwd)
+          pip uninstall -v -y chialisp
+          pip install -v --no-index --find-links target/wheels/ chialisp
           pip uninstall -v -y clvm_tools_rs
+          # Install chialisp pkg as "clvm_tools_rs" for older test framework
           pip install -e ./tmp
+          # -----
           pip install maturin pytest
           maturin develop --release
           (cd resources/tests/cmdline/tests && pytest)
