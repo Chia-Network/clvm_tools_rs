@@ -417,11 +417,16 @@ jobs:
         run: |
           source venv/bin/activate
           maturin develop --release
-      - name: Install chialisp
+      - name: verify chialisp install
         run: |
           source venv/bin/activate
-          pip uninstall -v -y chialisp
-          pip install -v --no-index --find-links target/wheels/ chialisp
+          pip show chialisp
+          python -c 'import chialisp; print("chialisp:", chialisp.__file__)'
+      #- name: Install chialisp
+      #  run: |
+      #    source venv/bin/activate
+      #    pip uninstall -v -y chialisp
+      #    pip install -v --no-index --find-links target/wheels/ chialisp
       - name: Install chialisp pkg as "clvm_tools_rs" for older test framework
         run: |
           source venv/bin/activate
