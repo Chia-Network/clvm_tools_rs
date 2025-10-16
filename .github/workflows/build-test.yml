@@ -398,22 +398,31 @@ jobs:
           cargo test --release --workspace
       - name: Configure pip
         run: |
+          echo "PWD:" $(pwd)
+          python -m pip install --upgrade pip
           python -m venv venv
           source venv/bin/activate
+          python -m pip install --upgrade pip
+      - name: clone clvm_tools so we have an exact match of the tests run in both repos
+        run: |
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           pip install ./clvm_tools
-          echo "PWD:" $(pwd)
-          pip uninstall -v -y chialisp
-          pip install -v --no-index --find-links target/wheels/ chialisp
-          pip uninstall -v -y clvm_tools_rs
-          # Install chialisp pkg as "clvm_tools_rs" for older test framework
-          pip install -e ./tmp
-          # -----
-          pip install maturin pytest
+      - name: install maturin & pytest
+        run: |
+          python -m pip install maturin==1.7.0
+          pip install pytest
       - name: Build maturin interface
         run: |
           maturin develop --release
-      - name: Run pytest in resources/tests/cmdline/tests
+      - name: Install chialisp
+        run: |
+          pip uninstall -v -y chialisp
+          pip install -v --no-index --find-links target/wheels/ chialisp
+      - name: Install chialisp pkg as "clvm_tools_rs" for older test framework
+        run: |
+          pip uninstall -v -y clvm_tools_rs
+          pip install -e ./tmp
+      - name: Run pytest in resources/tests/cmdline/tests for coverage
         run: |
           (cd resources/tests/cmdline/tests && pytest)
       - name: Run grcov for coverage
