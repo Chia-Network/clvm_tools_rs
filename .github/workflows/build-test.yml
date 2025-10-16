@@ -405,39 +405,39 @@ jobs:
           python -m pip install --upgrade pip
       - name: clone clvm_tools so we have an exact match of the tests run in both repos
         run: |
-          python -m venv venv
           source venv/bin/activate
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           pip install ./clvm_tools
       - name: install maturin & pytest
         run: |
-          python -m venv venv
+          source venv/bin/activate
           python -m pip install maturin==1.7.0
           pip install pytest
       - name: Build maturin interface
         run: |
-          python -m venv venv
+          source venv/bin/activate
           maturin develop --release
       - name: Install chialisp
         run: |
-          python -m venv venv
+          source venv/bin/activate
           pip uninstall -v -y chialisp
           pip install -v --no-index --find-links target/wheels/ chialisp
       - name: Install chialisp pkg as "clvm_tools_rs" for older test framework
         run: |
-          python -m venv venv
+          source venv/bin/activate
           pip uninstall -v -y clvm_tools_rs
           pip install -e ./tmp
       - name: Run pytest in resources/tests/cmdline/tests for coverage
         run: |
-          python -m venv venv
+          source venv/bin/activate
           (cd resources/tests/cmdline/tests && pytest)
       - name: Run grcov for coverage
         run: |
-          python -m venv venv
+          source venv/bin/activate
           grcov . --binary-path target -s . --branch --ignore-not-existing --ignore='*/.cargo/*' --ignore='*/tests/*' -o rust_cov.info
       - name: Process lcov.info
         run: |
+          source venv/bin/activate
           python -c 'with open("rust_cov.info") as f: lines = [l for l in f if not (l.startswith("DA:") and int(l.split(",")[1].strip()) >= 2**63)]; open("lcov.info", "w").writelines(lines)'
       - name: Upload to Coveralls
         uses: coverallsapp/github-action@v2
