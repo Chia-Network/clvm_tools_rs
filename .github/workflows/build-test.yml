@@ -386,7 +386,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
-      - name: Run for coverage
+      - name: Install coverage tools
         run: |
           sudo apt-get update
           sudo apt-get install lcov -y
@@ -396,11 +396,12 @@ jobs:
           export LLVM_PROFILE_FILE=$(pwd)/target/chialisp-%p-%m.profraw
           export CARGO_TARGET_DIR=$(pwd)/target
           cargo test --release --workspace
+      - name: Configure pip
+        run: |
           python -m venv venv
           source venv/bin/activate
           git clone https://github.com/Chia-Network/clvm_tools.git --branch=main --single-branch
           pip install ./clvm_tools
-          # ----- 
           echo "PWD:" $(pwd)
           pip uninstall -v -y chialisp
           pip install -v --no-index --find-links target/wheels/ chialisp
@@ -409,9 +410,17 @@ jobs:
           pip install -e ./tmp
           # -----
           pip install maturin pytest
+      - name: Build maturin interface
+        run: |
           maturin develop --release
+      - name: Run pytest in resources/tests/cmdline/tests
+        run: |
           (cd resources/tests/cmdline/tests && pytest)
+      - name: Run grcov for coverage
+        run: |
           grcov . --binary-path target -s . --branch --ignore-not-existing --ignore='*/.cargo/*' --ignore='*/tests/*' -o rust_cov.info
+      - name: Process lcov.info
+        run: |
           python -c 'with open("rust_cov.info") as f: lines = [l for l in f if not (l.startswith("DA:") and int(l.split(",")[1].strip()) >= 2**63)]; open("lcov.info", "w").writelines(lines)'
       - name: Upload to Coveralls
         uses: coverallsapp/github-action@v2
