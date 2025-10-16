@@ -56,7 +56,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: crate
-        path: ./target/package/clvm_tools_rs-*.crate
+        path: ./target/package/chialisp-*.crate
 
     # this has not been tested, so probably needs to be debugged next time a tag is created
     - name: publish to crates.io if tagged
